@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://code.jquery.com/jquery.min.js"></script>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.13.3/react.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.13.3/JSXTransformer.js"></script>
+    
+    <script type="text/jsx">
+      // TODO: Capture left over payments on months where there is a payoff
+      // TODO: Edit Loans
+      function clone(obj) {
+        var copy;
+        if (null == obj || "object" != typeof obj) return obj;
+
+        if (obj instanceof Array) {
+          copy = [];
+          for (var i = 0, len = obj.length; i < len; i++) {
+            copy[i] = clone(obj[i]);
+          }
+          return copy;
+        }
+
+        if (obj instanceof Object) {
+          copy = {};
+          for (var attr in obj) {
+            if (obj.hasOwnProperty(attr)) copy[attr] = clone(obj[attr]);
+          }
+          return copy;
+        }
+        throw new Error("Unable to copy obj! Its type isn't supported.");
+      }
+
+
+      var Loan = React.createClass({
+        render: function() {
+          return (
+            <tr className="loan">
+              <td>{this.props.name}</td>
+              <td>{this.props.balance}</td>
+              <td>{this.props.rate}</td>
+              <td>{this.props.minPayment}</td>
+            </tr>
+          );
+        }
+      });
+
+      var LoanList = React.createClass({
+        render: function() {
+          var loanNodes = this.props.loans.map(function(loan) {
+            return (
+              <Loan
+                balance={loan.balance}
+                rate={loan.rate}
+                name={loan.name}
+                minPayment={loan.minPayment}
+              />
+            );
+          });
+          return (
+            <div className="col-md-4 loan-list">
+              <h3>Loans</h3>
+              <table className="table table-striped">
+                <thead>
+                  <th>Name</th>
+                  <th>Balance</th>
+                  <th>Rate</th>
+                  <th>Min. Payment</th>
+                </thead>
+                <tbody>{loanNodes}</tbody>
+              </table>
+            </div>
+          );
+        }
+      });
+
+      var LoanForm = React.createClass({
+        handleSubmit: function(event) {
+          event.preventDefault();
+          
+          var name = React.findDOMNode(this.refs.name).value.trim();
+          var balance = parseInt(React.findDOMNode(this.refs.balance).value.trim());
+          var rate = parseInt(React.findDOMNode(this.refs.rate).value.trim());
+          var minPayment = parseInt(React.findDOMNode(this.refs.minPayment).value.trim());
+              
+          // TODO: Input Validation
+
+          this.props.onLoanSubmit({name: name, balance: balance, rate: rate, minPayment: minPayment});
+              
+          React.findDOMNode(this.refs.name).value = "";
+          React.findDOMNode(this.refs.balance).value = "";
+          React.findDOMNode(this.refs.rate).value = "";
+          React.findDOMNode(this.refs.minPayment).value = "";
+        },
+        render: function() {
+          return (
+            <form className="form-inline loanForm" onSubmit={this.handleSubmit}>
+              <div className="form-group">
+                <input className="form-control" type="text" placeholder="Loan Name" ref="name" />
+              </div>
+              <div className="form-group">
+                <input className="form-control" type="number" placeholder="Balance" ref="balance" />
+              </div>
+              <div className="form-group">
+                <input className="form-control" type="number" placeholder="Interest Rate" ref="rate" />
+              </div>
+              <div className="form-group">
+                <input className="form-control" type="number" placeholder="Min. Monthly Payment" ref="minPayment" />
+              </div>
+              <input className="btn btn-primary" type="Submit" value="Add" />
+            </form>
+          );
+        }
+      });
+
+      var PayoffOptions = React.createClass({
+        handleSortChange: function(event) {
+          this.props.onSortChange(event.currentTarget.value);
+        },
+        handlePaymentChange: function(event) {
+          this.props.onPaymentChange(parseInt(event.currentTarget.value));
+        },
+        render: function() {
+          return (
+            <div className="options-form col-md-4">
+              <h3>Payment Options</h3>
+              <form>
+                <div class="form-group">
+                  <label for="extra">Extra Payment</label>
+                  <input className="form-control" type="number" name="extra" placeholder="Extra Payment" onChange={this.handlePaymentChange} value={this.props.extraPayment} /><br/>
+                </div>
+                Payoff Order:
+                <div class="radio">
+                  <label>
+                    <input type="radio" name="sort" value="balance" onChange={this.handleSortChange} />
+                    By Lowest Balance
+                  </label>
+                </div>
+                <div class="radio">
+                  <label>
+                    <input type="radio" name="sort" value="rate" onChange={this.handleSortChange} />
+                    By Highest Rate
+                  </label>
+                </div>          
+              </form>
+            </div>
+          );
+        }
+      });
+
+      var BalanceAfterInterest = function(balance, rate) {
+        var periodicRate = (rate) / 365 / 100;
+        var interest = balance * periodicRate * 30;
+        return balance + interest;
+      };
+
+      var BalanceAfterPayment = function(loan, extraPayment) {
+        loan.balance = BalanceAfterInterest(loan.balance, loan.rate);
+        loan.balance -= (loan.minPayment + extraPayment);
+        if (loan.balance < 0) { loan.balance = 0; }
+        return Math.round(loan.balance * 100) / 100;
+      }
+
+      var AvailableMonthlyMin = function(loans) {
+        var avail = 0;
+        loans.forEach(function(loan) {
+          if (loan.balance == 0) {
+            avail += loan.minPayment
+          };
+        });
+        return avail;
+      }
+
+      var LoansToPayments = function(loans, extraPayment) {
+        loans = clone(loans);
+        var totalBalance = 100;
+        var months = 0;
+        var payments = [];
+        
+        while(totalBalance > 0 && months < 100) {
+          var alreadyPaid = true;
+          var interBalance = 0;
+          loans.forEach(function(loan, index) {
+            var newBal = 0;
+            var availableMin = AvailableMonthlyMin(loans);
+            if (loan.balance > 0 && alreadyPaid) {
+              payments.push({
+                month: months,
+                name: loan.name,
+                payment: loan.minPayment + extraPayment + availableMin,
+                balance: BalanceAfterPayment(loan, extraPayment + availableMin)
+              });
+              alreadyPaid = false;
+            } else if (loan.balance > 0) {
+              payments.push({
+                month: months,
+                name: loan.name,
+                payment: loan.minPayment,
+                balance: BalanceAfterPayment(loan, 0)
+              });
+            }
+            interBalance += loan.balance;
+          });
+          months += 1;
+          totalBalance = interBalance;
+        }
+        
+        return payments;
+      };
+
+      var PayoffSchedule = React.createClass({
+        render: function() {
+          var payments = LoansToPayments(this.props.loans, this.props.extraPayment);
+          var paymentNodes = payments.map(function(payment) {
+            return (
+              <tr>
+                <td>{payment.month}</td>
+                <td>{payment.name}</td>
+                <td>{payment.payment}</td>
+                <td>{payment.balance}</td>
+              </tr>
+            );
+          });
+          return (
+            <div className="payoff-table col-md-4">
+              <h3>Payment Schedule</h3>
+              <table className="table table-striped">
+                <thead>
+                  <th>Month</th>
+                  <th>Name</th>
+                  <th>Payment</th>
+                  <th>Balance</th>
+                </thead>
+                <tbody>
+                  {paymentNodes}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+      });
+
+      var SortByRate = function(a, b) {
+        if (a.rate > b.rate) { return -1; }
+        else if (a.rate < b.rate) { return 1; }
+        else { 
+          if (a.balance === b.balance) { return 0; }
+          return SortByBalance(a, b);
+        }
+      }
+
+      var SortByBalance = function(a, b) {
+        if (a.balance < b.balance) {
+          return -1;
+        } else if (a.balance > b.balance) {
+          return 1;
+        } else {
+          if (a.rate === b.rate) {
+            return 0;
+          } else {
+            return SortByRate(a, b);
+          }
+        }
+      }
+
+
+      var CalculatorBox = React.createClass({
+        handleLoanSubmit: function(loan) {
+          var data = this.state.loans;
+          data.push(loan);
+          if (this.state.sort == 'rate') {
+            data.sort(SortByRate);
+          } else {
+            data.sort(SortByBalance);
+          }
+          this.setState(data);
+        },
+        handleSortSubmit: function(direction) {
+          if (direction == "rate") {
+            this.setState(this.state.loans.sort(SortByRate));
+          } else {
+            this.setState(this.state.loans.sort(SortByBalance));
+          }
+          
+          this.setState({sort: direction});
+        },
+        handlePaymentChange: function(paymentAmount) {
+          this.setState({extraPayment: paymentAmount});
+        },
+        getInitialState: function() {
+          return { loans: [], extraPayment: 0, sort: 'rate' };
+        },
+        render: function() {
+          return (
+            <div className="top-level">
+              <h1>Loan Calculator</h1>
+              <h3>Loans</h3>
+              <LoanForm onLoanSubmit={this.handleLoanSubmit} /><br/>
+              <div className="calculator-box row">
+                <PayoffOptions onSortChange={this.handleSortSubmit} onPaymentChange={this.handlePaymentChange} extraPayment={this.state.extraPayment} />
+                <LoanList loans={this.state.loans} />
+                <PayoffSchedule loans={this.state.loans} extraPayment={this.state.extraPayment} />
+              </div>
+            </div>
+          );
+        }
+      });
+
+      React.render(<CalculatorBox />, document.getElementById("main"));
+    </script>
+    <meta charset="utf-8">
+    <title>Loan Payment Calculator - React</title>
+  </head>
+  <body>
+    <div id="main" class="container"></div>
+  </body>
+</html>
