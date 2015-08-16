@@ -155,9 +155,9 @@
         return balance + interest;
       };
 
-      var BalanceAfterPayment = function(loan, extraPayment) {
+      var BalanceAfterPayment = function(loan, payment) {
         loan.balance = BalanceAfterInterest(loan.balance, loan.rate);
-        loan.balance -= (loan.minPayment + extraPayment);
+        loan.balance -= payment;
         if (loan.balance < 0) { loan.balance = 0; }
         return Math.round(loan.balance * 100) / 100;
       }
@@ -182,16 +182,23 @@
           var alreadyPaid = true;
           var interBalance = 0;
           loans.forEach(function(loan, index) {
-            var newBal = 0;
+            var remainder = 0;
             var availableMin = AvailableMonthlyMin(loans);
             if (loan.balance > 0 && alreadyPaid) {
+              var payment = extraPayment + availableMin + loan.minPayment + remainder;
+              if ((payment) > loan.balance) {
+                remainder = payment - loan.balance;
+                payment = loan.balance;
+              } else {
+                remainder = 0;
+                alreadyPaid = false;
+              }
               payments.push({
                 month: months,
                 name: loan.name,
-                payment: loan.minPayment + extraPayment + availableMin,
-                balance: BalanceAfterPayment(loan, extraPayment + availableMin)
+                payment: payment,
+                balance: BalanceAfterPayment(loan, payment)
               });
-              alreadyPaid = false;
             } else if (loan.balance > 0) {
               payments.push({
                 month: months,
