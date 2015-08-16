@@ -80,9 +80,9 @@
           event.preventDefault();
           
           var name = React.findDOMNode(this.refs.name).value.trim();
-          var balance = parseInt(React.findDOMNode(this.refs.balance).value.trim());
-          var rate = parseInt(React.findDOMNode(this.refs.rate).value.trim());
-          var minPayment = parseInt(React.findDOMNode(this.refs.minPayment).value.trim());
+          var balance = parseFloat(React.findDOMNode(this.refs.balance).value.trim());
+          var rate = parseFloat(React.findDOMNode(this.refs.rate).value.trim());
+          var minPayment = parseFloat(React.findDOMNode(this.refs.minPayment).value.trim());
               
           // TODO: Input Validation
 
@@ -119,7 +119,7 @@
           this.props.onSortChange(event.currentTarget.value);
         },
         handlePaymentChange: function(event) {
-          this.props.onPaymentChange(parseInt(event.currentTarget.value));
+          this.props.onPaymentChange(parseFloat(event.currentTarget.value));
         },
         render: function() {
           return (
